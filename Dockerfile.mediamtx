@@ -1,0 +1,21 @@
+# MediaMTX + FFmpeg + curl
+# 프레임 추출 및 Spring으로 전송을 위한 도구 포함
+
+FROM bluenviron/mediamtx:latest
+
+# mediamtx 이미지는 scratch 기반이므로 멀티스테이지 빌드 사용
+FROM alpine:latest
+
+# 필요한 도구 설치
+RUN apk add --no-cache \
+    ffmpeg \
+    curl \
+    bash
+
+# mediamtx 바이너리 복사
+COPY --from=bluenviron/mediamtx:latest /mediamtx /mediamtx
+
+# 설정 파일 디렉토리
+WORKDIR /
+
+ENTRYPOINT ["/mediamtx"]

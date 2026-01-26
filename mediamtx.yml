@@ -1,0 +1,77 @@
+# MediaMTX 미디어 서버 설정
+
+# 로그 레벨 (debug, info, warn, error)
+logLevel: info
+
+# REST API 활성화
+api: yes
+apiAddress: :9997
+
+# RTSP - 내부 스트림 재생용 (WebRTC/HLS 변환 소스)
+rtsp: yes
+rtspAddress: :8554
+
+# RTMP - 사용 안 함 (원격 MTX에서 SRT로만 수신)
+rtmp: no
+
+# SRT - 원격 MediaMTX에서 스트림 수신 (유일한 입력 프로토콜)
+srt: yes
+srtAddress: :8890
+
+# HLS - 웹 브라우저 영상 재생용
+hls: yes
+hlsAddress: :8888
+hlsVariant: fmp4              # Fragmented MP4 (브라우저 직접 재생 가능)
+
+# HLS 녹화 설정 - 이상상황 시 클립 추출용
+hlsSegmentCount: 10           # 유지할 세그먼트 수
+hlsSegmentDuration: 3s        # 세그먼트 길이 (3초 x 10개 = 30초 보관)
+hlsDirectory: /recordings     # 녹화 파일 저장 경로
+hlsSegmentMaxSize: 50M        # 세그먼트 최대 크기
+
+# WebRTC - 실시간 저지연 스트리밍
+webrtc: yes
+webrtcAddress: :8889
+webrtcLocalUDPAddress: :8189  # ICE UDP 포트
+# Docker 컨테이너 내에서 실행 시, 브라우저에 알려줄 호스트 IP
+# localhost 개발 환경용 (프로덕션에서는 공개 IP로 변경)
+webrtcICEHostNAT1To1IPs: [127.0.0.1]
+webrtcICEUDPMuxAddress: :8189
+
+# 외부 인증 설정 (시청 인증)
+authMethod: http
+authHTTPAddress: http://host.docker.internal:8080/internal/mediamtx/auth
+
+# 내부 사용자 인증 설정 (송출 인증)
+authInternalUsers:
+  - user: aegis
+    pass: trillion
+    permissions:
+      - action: publish
+        path: ""
+      - action: read
+        path: ""
+      - action: playback
+        path: ""
+
+# 스트림 경로 설정
+paths:
+  all:              # 모든 경로에 적용
+    # 스트림 시작 시:
+    # 1. Spring에 동기화 트리거
+    # 2. FFmpeg로 프레임 추출하여 Python Agent에 전송 (1fps)
+    # $MTX_PATH = 카메라 이름
+    # AGENT_FRAME_URL 환경변수로 Agent 주소 설정 (기본: http://host.docker.internal:8001)
+    runOnReady: >
+      sh -c '
+      curl -s -X POST http://host.docker.internal:8080/internal/mediamtx/sync;
+      AGENT_URL="${AGENT_FRAME_URL:-http://host.docker.internal:8001}";
+      while true; do
+        ffmpeg -y -i rtsp://localhost:8554/$MTX_PATH -vframes 1 -f image2 -vcodec mjpeg -q:v 5 - 2>/dev/null |
+        curl -s -X POST -H "Content-Type: application/octet-stream" --data-binary @- 
+        "$AGENT_URL/frame/$MTX_PATH";
+        sleep 1;
+      done
+      '
+    runOnReadyRestart: yes
+    runOnNotReady: curl -s -X POST http://host.docker.internal:8080/internal/mediamtx/sync

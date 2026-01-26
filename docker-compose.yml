@@ -1,0 +1,122 @@
+# Aegis 개발 환경 인프라
+
+services:
+  # ==================== 리버스 프록시 ====================
+  caddy:
+    image: caddy:latest
+    container_name: aegis-caddy
+    restart: unless-stopped
+    ports:
+      - "443:443"                  # HTTPS
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # 호스트 머신 접근용
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile     # 설정 파일
+      - ./caddy_data:/data                    # 인증서/캐시
+      - ./caddy_config:/config                # 런타임 설정
+    networks:
+      - aegis
+
+  # ==================== 미디어 서버 ====================
+  mediamtx:
+    build:
+      context: .
+      dockerfile: Dockerfile.mediamtx
+    image: aegis-mediamtx:latest
+    container_name: aegis-mediamtx
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # 호스트 머신 접근용 (Spring 인증)
+    ports:
+      - "8890:8890/udp"     # SRT (원격 MediaMTX에서 스트림 수신)
+      - "8889:8889"         # WebRTC WHEP (시그널링)
+      - "8189:8189/udp"     # WebRTC ICE (미디어)
+      - "8888:8888"         # HLS (웹 영상 재생)
+      - "9997:9997"         # API
+    volumes:
+      - ./mediamtx.yml:/mediamtx.yml
+      - ./recordings:/recordings    # HLS 녹화 파일 저장
+    networks:
+      - aegis
+
+  # ==================== 데이터베이스 ====================
+  postgres:
+    image: postgres:latest
+    container_name: aegis-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: aegis
+      POSTGRES_PASSWORD: trillion
+      POSTGRES_DB: aegis
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./postgres_data:/var/lib/postgresql  # PostgreSQL 18+ 경로
+    networks:
+      - aegis
+
+  # ==================== 캐시/세션 저장소 ====================
+  redis:
+    image: redis:latest
+    container_name: aegis-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./redis_data:/data
+    networks:
+      - aegis
+
+  # ==================== 오브젝트 스토리지 ====================
+  minio:
+    image: minio/minio:latest
+    container_name: aegis-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: aegis
+      MINIO_ROOT_PASSWORD: trillion
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # 웹 콘솔
+    volumes:
+      - ./minio_data:/data
+    networks:
+      - aegis
+
+  # MinIO 버킷 초기화 (시작 후 종료)
+  minio-init:
+    image: minio/mc:latest
+    container_name: aegis-minio-init
+    depends_on:
+      - minio
+    networks:
+      - aegis
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        echo "MinIO 초기화 시작..."
+        
+        # MinIO 준비 대기
+        until mc alias set local http://minio:9000 aegis trillion 2>/dev/null; do
+          echo "MinIO 연결 대기 중..."
+          sleep 2
+        done
+        
+        echo "MinIO 연결 완료"
+        
+        # 버킷 생성
+        mc mb local/files --ignore-existing && echo "버킷 [files] 생성/확인 완료"
+        
+        # 버킷 목록 출력
+        echo "=== 버킷 목록 ==="
+        mc ls local/
+        
+        echo "MinIO 초기화 완료!"
+
+
+# 공용 네트워크
+networks:
+  aegis:
+    name: aegis
