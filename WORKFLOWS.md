@@ -2,7 +2,7 @@
 
 > CCTV 실시간 AI 안전 모니터링 시스템
 
-**최종 업데이트**: 2026-01-26
+**최종 업데이트**: 2026-01-27
 
 ---
 
@@ -1323,16 +1323,31 @@ SSE 스트림 연결 (인증 필요)
 | `['stats', 'daily']` | 일별 통계 |
 | `['stats', 'monthly']` | 월별 통계 |
 | `['stats', 'summary']` | 요약 통계 |
+| `['cameras']` | 카메라 목록 (SSE 연동) |
+| `['events']` | 이벤트 목록 (SSE 연동) |
+| `['users']` | 사용자 목록 (SSE 연동) |
+| `['notifications']` | 알림 목록 (SSE 연동) |
 
-### 8.5 Custom Hooks
+### 8.5 전역 SSE 연결 (SseContext)
 
 
-**useNotificationStream(onNotification?, onCameraUpdate?, onEventUpdate?, onMemberUpdate?):**
+**SseProvider:**
 
+- 로그인 시 단일 SSE 연결 생성
+- 로그아웃 시 연결 종료
 - `@microsoft/fetch-event-source` 사용 (Authorization 헤더 지원)
-- 로그인 상태에서 자동 연결
-- 새 알림 수신 시 토스트 표시
-- 연결 끊김 시 자동 재연결
+- 연결 끊김 시 자동 재연결 (최대 5회, 지수 백오프)
+
+
+**SSE 이벤트별 처리:**
+
+| 이벤트 | React Query 무효화 | 추가 동작 |
+|--------|-------------------|----------|
+| connect | - | 연결 확인 |
+| notification | `['notifications']` | 토스트 알림 표시 |
+| camera | `['cameras']`, `['streams']` | - |
+| event | `['events']`, `['eventLogs']` | - |
+| member | `['users']` | - |
 
 
 **useStreams():**
