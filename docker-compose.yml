@@ -84,36 +84,6 @@ services:
     networks:
       - aegis
 
-  # MinIO 버킷 초기화 (시작 후 종료)
-  minio-init:
-    image: minio/mc:latest
-    container_name: aegis-minio-init
-    depends_on:
-      - minio
-    networks:
-      - aegis
-    entrypoint: /bin/bash
-    command:
-      - -c
-      - |
-        echo "MinIO 초기화 시작..."
-        
-        # MinIO 준비 대기
-        until mc alias set local http://minio:9000 aegis trillion 2>/dev/null; do
-          echo "MinIO 연결 대기 중..."
-          sleep 2
-        done
-        
-        echo "MinIO 연결 완료"
-        
-        # 버킷 생성
-        mc mb local/files --ignore-existing && echo "버킷 [files] 생성/확인 완료"
-        
-        # 버킷 목록 출력
-        echo "=== 버킷 목록 ==="
-        mc ls local/
-        
-        echo "MinIO 초기화 완료!"
 
 
 # 공용 네트워크
