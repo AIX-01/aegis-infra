@@ -41,12 +41,13 @@ authHTTPAddress: http://host.docker.internal:8080/internal/mediamtx/auth
 
 # 내부 사용자 인증 설정
 authInternalUsers:
-  # SRT 송출용 (단순 이름/비번 인증)
+  # SRT 송출용 (외부에서 스트림 push, 이름/비번 인증)
   - user: aegis
     pass: trillion
     permissions:
       - action: publish
         path: ""
+        protocol: srt
   # RTSP 읽기 - 인증 없음 (Python Agent 프레임 캡처용)
   - user: ""
     pass: ""
