@@ -3,37 +3,27 @@
 # 로그 레벨 (debug, info, warn, error)
 logLevel: info
 
-# REST API 활성화
+# REST API
 api: yes
 apiAddress: :9997
 
-# RTSP - Python Agent 프레임 캡처용 (내부 전용)
-rtsp: yes
-rtspAddress: :8554
-
-# SRT - 원격 MediaMTX에서 스트림 수신
-srt: yes
-srtAddress: :8890
-
-# HLS - Spring 클립 추출용 (내부 전용)
-hls: yes
-hlsAddress: :8888
-hlsVariant: fmp4              # Fragmented MP4 (FFmpeg 변환 용이)
+# 프로토콜 활성화
+srt: yes        # 외부에서 스트림 수신 (인증 필요)
+webrtc: yes     # 프론트엔드 실시간 스트리밍 (인증 필요)
+rtsp: yes       # Python 프레임 캡처용 (내부)
+hls: yes        # Spring 클립 추출용 (내부)
+rtmp: no        # 사용 안 함
 
 # HLS 세그먼트 설정 - 이상상황 발생 시 클립 추출용
+hlsVariant: fmp4              # Fragmented MP4 (FFmpeg 변환 용이)
 hlsSegmentCount: 10           # 유지할 세그먼트 수
 hlsSegmentDuration: 3s        # 세그먼트 길이 (3초 x 10개 = 30초 보관)
 hlsDirectory: /recordings     # 세그먼트 파일 저장 경로
 hlsSegmentMaxSize: 50M        # 세그먼트 최대 크기
 
-# WebRTC - 프론트엔드 실시간 저지연 스트리밍
-webrtc: yes
-webrtcAddress: :8889
+# WebRTC 설정
 webrtcLocalUDPAddress: :8189
 webrtcAdditionalHosts: [127.0.0.1]  # 개발 환경용 (프로덕션에서는 공개 IP로 변경)
-
-# RTMP - 사용 안 함
-rtmp: no
 
 # 외부 인증 설정 (모든 인증을 Spring으로 위임)
 authMethod: http
