@@ -57,21 +57,8 @@ authInternalUsers:
 # 스트림 경로 설정
 paths:
   all:              # 모든 경로에 적용
-    # 스트림 시작 시:
-    # 1. Spring에 동기화 트리거
-    # 2. FFmpeg로 프레임 추출하여 Python Agent에 전송 (1fps)
-    # $MTX_PATH = 카메라 이름
-    # AGENT_FRAME_URL 환경변수로 Agent 주소 설정 (기본: http://host.docker.internal:8001)
-    runOnReady: >
-      sh -c '
-      curl -s -X POST http://host.docker.internal:8080/internal/mediamtx/sync;
-      AGENT_URL="${AGENT_FRAME_URL:-http://host.docker.internal:8001}";
-      while true; do
-        ffmpeg -y -i rtsp://localhost:8554/$MTX_PATH -vframes 1 -f image2 -vcodec mjpeg -q:v 5 - 2>/dev/null |
-        curl -s -X POST -H "Content-Type: application/octet-stream" --data-binary @- 
-        "$AGENT_URL/frame/$MTX_PATH";
-        sleep 1;
-      done
-      '
-    runOnReadyRestart: yes
+    # 스트림 시작/종료 시 Spring에 동기화 트리거
+    # Python Agent는 Redis Pub/Sub로 알림 받아 RTSP로 직접 캡처
+    runOnReady: curl -s -X POST http://host.docker.internal:8080/internal/mediamtx/sync
+    runOnReadyRestart: no
     runOnNotReady: curl -s -X POST http://host.docker.internal:8080/internal/mediamtx/sync
