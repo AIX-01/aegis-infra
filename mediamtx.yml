@@ -7,29 +7,26 @@ logLevel: info
 api: yes
 apiAddress: :9997
 
-# RTSP - 내부 스트림 재생용 (WebRTC/HLS 변환 소스)
+# RTSP - Python Agent 프레임 캡처용 (내부 전용, 인증 없음)
 rtsp: yes
 rtspAddress: :8554
-
-# RTMP - 사용 안 함 (원격 MTX에서 SRT로만 수신)
-rtmp: no
 
 # SRT - 원격 MediaMTX에서 스트림 수신 (유일한 입력 프로토콜)
 srt: yes
 srtAddress: :8890
 
-# HLS - 웹 브라우저 영상 재생용
+# HLS - Spring 클립 추출용 (내부 전용, 인증 없음)
 hls: yes
 hlsAddress: :8888
-hlsVariant: fmp4              # Fragmented MP4 (브라우저 직접 재생 가능)
+hlsVariant: fmp4              # Fragmented MP4 (FFmpeg 변환 용이)
 
-# HLS 녹화 설정 - 이상상황 시 클립 추출용
+# HLS 세그먼트 설정 - 이상상황 발생 시 클립 추출용
 hlsSegmentCount: 10           # 유지할 세그먼트 수
 hlsSegmentDuration: 3s        # 세그먼트 길이 (3초 x 10개 = 30초 보관)
-hlsDirectory: /recordings     # 녹화 파일 저장 경로
+hlsDirectory: /recordings     # 세그먼트 파일 저장 경로
 hlsSegmentMaxSize: 50M        # 세그먼트 최대 크기
 
-# WebRTC - 실시간 저지연 스트리밍
+# WebRTC - 프론트엔드 실시간 저지연 스트리밍
 webrtc: yes
 webrtcAddress: :8889
 webrtcLocalUDPAddress: :8189  # ICE UDP 포트
@@ -38,27 +35,37 @@ webrtcLocalUDPAddress: :8189  # ICE UDP 포트
 webrtcICEHostNAT1To1IPs: [127.0.0.1]
 webrtcICEUDPMuxAddress: :8189
 
-# 외부 인증 설정 (시청 인증)
+# 외부 인증 설정 (WebRTC 시청 인증)
 authMethod: http
 authHTTPAddress: http://host.docker.internal:8080/internal/mediamtx/auth
 
-# 내부 사용자 인증 설정 (송출 인증)
+# 내부 사용자 인증 설정
 authInternalUsers:
+  # SRT 송출용 (단순 이름/비번 인증)
   - user: aegis
     pass: trillion
     permissions:
       - action: publish
         path: ""
+  # RTSP 읽기 - 인증 없음 (Python Agent 프레임 캡처용)
+  - user: ""
+    pass: ""
+    permissions:
       - action: read
         path: ""
-      - action: playback
+        protocol: rtsp
+  # HLS 읽기 - 인증 없음 (Spring 클립 추출용)
+  - user: ""
+    pass: ""
+    permissions:
+      - action: read
         path: ""
+        protocol: hls
 
 # 스트림 경로 설정
 paths:
-  all:              # 모든 경로에 적용
+  all:
     # 스트림 시작/종료 시 Spring에 동기화 트리거
-    # Python Agent는 Redis Pub/Sub로 알림 받아 RTSP로 직접 캡처
     runOnReady: curl -s -X POST http://host.docker.internal:8080/internal/mediamtx/sync
     runOnReadyRestart: no
     runOnNotReady: curl -s -X POST http://host.docker.internal:8080/internal/mediamtx/sync

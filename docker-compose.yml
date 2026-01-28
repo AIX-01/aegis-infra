@@ -28,14 +28,15 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"  # 호스트 머신 접근용 (Spring 인증)
     ports:
+      - "8554:8554"         # RTSP (Python Agent 프레임 캡처용)
       - "8890:8890/udp"     # SRT (원격 MediaMTX에서 스트림 수신)
       - "8889:8889"         # WebRTC WHEP (시그널링)
       - "8189:8189/udp"     # WebRTC ICE (미디어)
-      - "8888:8888"         # HLS (웹 영상 재생)
+      - "8888:8888"         # HLS (Spring 클립 추출용)
       - "9997:9997"         # API
     volumes:
       - ./mediamtx.yml:/mediamtx.yml
-      - ./recordings:/recordings    # HLS 녹화 파일 저장
+      - ./recordings:/recordings    # HLS 세그먼트 저장
     networks:
       - aegis
 
