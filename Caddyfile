@@ -1,19 +1,18 @@
-# ==================== 프론트엔드 + API + 스트림 ====================
 localhost {
-    tls internal  # 자체 서명 인증서
+    tls internal
 
-    # 백엔드 API
+    # 백엔드
     handle /api/* {
         reverse_proxy host.docker.internal:8080
     }
 
-    # MediaMTX WebRTC (WHEP) - /stream/cam/whep -> /cam/whep
+    # MediaMTX
     handle /stream/* {
         uri strip_prefix /stream
-        reverse_proxy host.docker.internal:8889
+        reverse_proxy aegis-mediamtx:8889
     }
 
-    # 프론트엔드 (기본 핸들러)
+    # 프론트엔드
     handle {
         reverse_proxy host.docker.internal:3000
     }
