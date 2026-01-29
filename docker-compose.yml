@@ -1,23 +1,21 @@
-# Aegis 개발 환경 인프라
-
 services:
-  # ==================== 리버스 프록시 ====================
+  # 리버스 프록시
   caddy:
     image: caddy:latest
     container_name: aegis-caddy
     restart: unless-stopped
     ports:
-      - "443:443"                  # HTTPS
+      - "443:443"
     extra_hosts:
-      - "host.docker.internal:host-gateway"  # 호스트 머신 접근용
+      - "host.docker.internal:host-gateway"
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile     # 설정 파일
-      - ./caddy_data:/data                    # 인증서/캐시
-      - ./caddy_config:/config                # 런타임 설정
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./caddy_data:/data
+      - ./caddy_config:/config
     networks:
       - aegis
 
-  # ==================== 미디어 서버 ====================
+  # 미디어 서버
   mediamtx:
     build:
       context: .
@@ -26,21 +24,21 @@ services:
     container_name: aegis-mediamtx
     restart: unless-stopped
     extra_hosts:
-      - "host.docker.internal:host-gateway"  # 호스트 머신 접근용 (Spring 인증)
+      - "host.docker.internal:host-gateway"
     ports:
-      - "8554:8554"         # RTSP (Python Agent 프레임 캡처용)
-      - "8890:8890/udp"     # SRT (원격 MediaMTX에서 스트림 수신)
-      - "8889:8889"         # WebRTC WHEP (시그널링)
-      - "8189:8189/udp"     # WebRTC ICE (미디어)
-      - "8888:8888"         # HLS (Spring 클립 추출용)
-      - "9997:9997"         # API
+      - "9997:9997"       # API
+      - "8890:8890/udp"   # SRT
+      - "8889:8889"       # WebRTC WHEP
+      - "8189:8189/udp"   # WebRTC ICE
+      - "8554:8554"       # RTSP
+      - "8888:8888"       # HLS
     volumes:
-      - ./mediamtx.yml:/mediamtx.yml
-      - ./recordings:/recordings    # HLS 세그먼트 저장
+      - ./mediamtx.yml:/mediamtx.yml:ro
+      - ./recordings:/recordings
     networks:
       - aegis
 
-  # ==================== 데이터베이스 ====================
+  # 데이터베이스
   postgres:
     image: postgres:latest
     container_name: aegis-postgres
@@ -52,11 +50,28 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - ./postgres_data:/var/lib/postgresql  # PostgreSQL 18+ 경로
+      - ./postgres_data:/var/lib/postgresql
     networks:
       - aegis
 
-  # ==================== 캐시/세션 저장소 ====================
+  # 오브젝트 스토리지
+  minio:
+    image: minio/minio:latest
+    container_name: aegis-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: aegis
+      MINIO_ROOT_PASSWORD: trillion
+    ports:
+      - "9000:9000"   # API
+      - "9001:9001"   # 웹 콘솔
+    volumes:
+      - ./minio_data:/data
+    networks:
+      - aegis
+
+  # 캐시
   redis:
     image: redis:latest
     container_name: aegis-redis
@@ -68,26 +83,6 @@ services:
     networks:
       - aegis
 
-  # ==================== 오브젝트 스토리지 ====================
-  minio:
-    image: minio/minio:latest
-    container_name: aegis-minio
-    restart: unless-stopped
-    command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: aegis
-      MINIO_ROOT_PASSWORD: trillion
-    ports:
-      - "9000:9000"   # S3 API
-      - "9001:9001"   # 웹 콘솔
-    volumes:
-      - ./minio_data:/data
-    networks:
-      - aegis
-
-
-
-# 공용 네트워크
 networks:
   aegis:
     name: aegis
