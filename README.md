@@ -6,7 +6,128 @@
 
 AEGIS Infrastructure는 Docker Compose 기반의 인프라 구성으로, 리버스 프록시, 미디어 서버, 데이터베이스, 오브젝트 스토리지, 캐시를 포함합니다.
 
-## 아키텍처
+## 시스템 아키텍처
+
+### 전체 구성도
+
+```mermaid
+flowchart LR
+    subgraph Client
+        Browser[브라우저]
+        RMTX[원격 MTX]
+    end
+
+    subgraph Gateway
+        Caddy[Caddy :443]
+    end
+
+    subgraph Application
+        Next[Next.js :3000]
+        Spring[Spring Boot :8080]
+        Agent[Python Agent]
+    end
+
+    subgraph Media
+        MTX[MediaMTX]
+    end
+
+    subgraph Storage
+        PG[(PostgreSQL)]
+        Redis[(Redis)]
+        MinIO[(MinIO)]
+    end
+
+    Browser --> Caddy
+    Browser -.-> MTX
+    RMTX --> MTX
+
+    Caddy --> Next
+    Caddy --> Spring
+    Caddy --> MTX
+
+    MTX --> Spring
+    MTX --> Agent
+    Spring --> MTX
+
+    Agent --> Spring
+    Spring --> Redis
+    Agent -.-> Redis
+
+    Spring --> PG
+    Spring --> MinIO
+```
+
+### 서비스 포트
+
+| 서비스 | 포트 | 설명 |
+|--------|------|------|
+| Caddy | 443 | HTTPS 리버스 프록시 |
+| Next.js | 3000 | 프론트엔드 |
+| Spring Boot | 8080 | 백엔드 API |
+| Python Agent | - | AI 분석 (포트 미노출) |
+| PostgreSQL | 5432 | 데이터베이스 |
+| Redis | 6379 | 캐시/토큰/Pub-Sub |
+| MinIO API | 9000 | 클립 스토리지 |
+| MinIO Console | 9001 | 웹 관리 콘솔 |
+
+### MediaMTX 포트
+
+| 프로토콜 | 포트 | 용도 |
+|----------|------|------|
+| SRT | 8890/udp | 원격 MTX에서 스트림 수신 |
+| WebRTC WHEP | 8889 | 시그널링 |
+| WebRTC ICE | 8189/udp | 미디어 |
+| HLS | 8888 | Spring 클립 추출용 (내부) |
+| RTSP | 8554 | Python Agent 프레임 캡처용 (내부) |
+| API | 9997 | 카메라 목록 조회 |
+
+## 워크플로우
+
+### WebRTC 스트리밍 흐름
+
+```
+1. 브라우저 → Spring Boot: GET /api/cameras → 카메라 목록 + streamUrl 반환
+2. 브라우저 → MediaMTX: POST /stream/{cam}/whep + Authorization: Basic base64(_:jwt)
+3. MediaMTX → Spring Boot: POST /internal/mediamtx/auth (password=jwt)
+4. Spring Boot: JWT 검증 → 카메라 접근 권한 확인
+5. 브라우저 ↔ MediaMTX: UDP ICE 직접 연결 (DTLS 암호화)
+```
+
+### 카메라 동기화 흐름
+
+```
+1. 원격 MTX → MediaMTX: SRT 스트림 송출
+2. MediaMTX: runOnReady 훅 실행
+3. MediaMTX → Spring Boot: POST /internal/mediamtx/sync
+4. Spring Boot → MediaMTX: GET /v3/paths/list
+5. Spring Boot → PostgreSQL: 카메라 INSERT/UPDATE
+6. Spring Boot → Redis: 분석 카메라 목록 저장 (analysis:cameras)
+7. Spring Boot → Redis: Pub/Sub camera:analysis:update 발행
+8. Spring Boot → 브라우저: SSE camera 이벤트
+```
+
+### AI 분석 흐름
+
+```
+1. Agent: Redis camera:analysis:update 채널 구독
+2. Agent: Redis에서 분석 카메라 목록 조회 (GET analysis:cameras)
+3. Agent: RTSP로 MediaMTX에 직접 연결 (rtsp://localhost:8554/{cam}, 인증 없음)
+4. Agent: 1fps 캡처, 640x360 리사이즈, 8프레임 버퍼링
+5. Agent: LangGraph 분석 파이프라인 실행
+6. Agent → Spring Boot: POST /internal/agent/events → Event 생성 (클립 자동 추출)
+7. Agent → Spring Boot: PATCH /internal/agent/events/{id}/analysis → 분석 결과 추가
+```
+
+### 인증 흐름
+
+```
+1. 로그인 → Access Token (응답 body) + Refresh Token (Redis + Cookie)
+2. API 호출 → Authorization: Bearer {accessToken}
+3. 401 응답 → Refresh Token으로 갱신 시도
+4. 갱신 실패 → /auth로 리다이렉트
+```
+
+## 아키텍처 (ASCII)
 
 ```
                     ┌─────────────────────────────────────────┐
@@ -144,6 +265,37 @@ paths:
 FROM bluenviron/mediamtx:latest
 RUN apk add --no-cache curl
 ```
+
+### 인증 설정
+
+모든 인증을 Spring Boot로 위임하여 통합 관리합니다.
+
+**프로토콜별 인증 처리:**
+
+| 프로토콜 | action | 인증 방식 | 설명 |
+|----------|--------|-----------|------|
+| SRT | publish | ID/PW | `streamid=publish:path:user:password` 형식 |
+| RTSP | read | 없음 | Python Agent 프레임 캡처용 (내부) |
+| HLS | read | 없음 | Spring 클립 추출용 (내부) |
+| WebRTC | read | JWT | Basic Auth password 필드에 JWT 전달 |
+
+**SRT 송출 URL 형식:**
+
+```
+srt://host:8890?streamid=publish:카메라명:사용자:비밀번호
+```
+
+예시: `srt://host:8890?streamid=publish:cam1:aegis:trillion`
+
+**HLS 클립 설정:**
+
+| 설정 | 값 | 설명 |
+|------|-----|------|
+| hlsSegmentCount | 10 | 유지 세그먼트 수 |
+| hlsSegmentDuration | 3s | 세그먼트 길이 |
+| hlsSegmentMaxSize | 10M | 세그먼트 최대 크기 |
+
+→ 3초 × 10개 = 최근 30초 보관 (Spring에서 이벤트 발생 시 클립 추출)
 
 ### 볼륨
 
