@@ -348,7 +348,7 @@ srt://host:8890?streamid=publish:카메라명:사용자:비밀번호
 
 ### 버킷
 
-- **aegis-clips**: 이벤트 클립 저장
+- **files**: 이벤트 클립 저장 (기본 버킷)
 
 ## Redis
 
@@ -383,7 +383,7 @@ aegis-infra/
 ├── caddy_data/         # Caddy 인증서
 ├── minio_data/         # MinIO 데이터
 │   └── files/
-│       └── aegis-clips/
+│       └── files/
 ├── postgres_data/      # PostgreSQL 데이터
 ├── recordings/         # MediaMTX HLS 녹화
 └── redis_data/         # Redis 데이터
