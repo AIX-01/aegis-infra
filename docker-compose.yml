@@ -4,10 +4,10 @@ services:
     image: caddy:latest
     container_name: aegis-caddy
     restart: unless-stopped
-    ports:
-      - "443:443"
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    ports:
+      - "443:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ./caddy_data:/data
@@ -17,10 +17,7 @@ services:
 
   # 미디어 서버
   mediamtx:
-    build:
-      context: .
-      dockerfile: Dockerfile.mediamtx
-    image: aegis-mediamtx:latest
+    image: bluenviron/mediamtx:latest-ffmpeg
     container_name: aegis-mediamtx
     restart: unless-stopped
     extra_hosts:
@@ -33,36 +30,57 @@ services:
       - "8554:8554"       # RTSP
       - "8888:8888"       # HLS
     volumes:
-      - ./mediamtx.yml:/mediamtx.yml:ro
-      - ./recordings:/recordings
+      - ./mediamtx_data:/recordings
     networks:
       - aegis
+    environment:
+      # --- 로그 및 기본 설정 ---
+      MTX_LOGLEVEL: "info"
+      MTX_API: "yes"
+      # --- 프로토콜 설정 ---
+      MTX_RTMP: "no"
+      MTX_SRT: "yes"
+      MTX_WEBRTC: "yes"
+      MTX_RTSP: "yes"
+      MTX_HLS: "yes"
+      # --- WebRTC 설정 ---
+      MTX_WEBRTCADDITIONALHOSTS: "127.0.0.1"
+      # --- HLS 설정 ---
+      MTX_HLSVARIANT: "fmp4"
+      MTX_HLSSEGMENTDURATION: "3s"
+      MTX_HLSSEGMENTCOUNT: "10"
+      MTX_HLSSEGMENTMAXSIZE: "10M"
+      MTX_HLSDIRECTORY: "/recordings"
+      # --- 인증 설정 ---
+      MTX_AUTHMETHOD: "http"
+      MTX_AUTHHTTPADDRESS: "http://host.docker.internal:8080/internal/mediamtx/auth"
+      # --- 이벤트 훅 ---
+      MTX_PATHS_ALL_RUNONREADY: "wget -q -O - --header='Content-Type: application/json' --post-data='{}' http://host.docker.internal:8080/internal/mediamtx/sync"
+      MTX_PATHS_ALL_RUNONREADYRESTART: "no"
+      MTX_PATHS_ALL_RUNONNOTREADY: "wget -q -O - --header='Content-Type: application/json' --post-data='{}' http://host.docker.internal:8080/internal/mediamtx/sync"
+    command: [ "/dev/null" ]
 
   # 데이터베이스
   postgres:
     image: postgres:latest
     container_name: aegis-postgres
     restart: unless-stopped
-    environment:
-      POSTGRES_USER: aegis
-      POSTGRES_PASSWORD: trillion
-      POSTGRES_DB: aegis
     ports:
       - "5432:5432"
     volumes:
       - ./postgres_data:/var/lib/postgresql
     networks:
       - aegis
+    environment:
+      POSTGRES_USER: aegis
+      POSTGRES_PASSWORD: trillion
+      POSTGRES_DB: aegis
 
   # 오브젝트 스토리지
   minio:
     image: minio/minio:latest
     container_name: aegis-minio
     restart: unless-stopped
-    command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: aegis
-      MINIO_ROOT_PASSWORD: trillion
     ports:
       - "9000:9000"   # API
       - "9001:9001"   # 웹 콘솔
@@ -70,6 +88,10 @@ services:
       - ./minio_data:/data
     networks:
       - aegis
+    environment:
+      MINIO_ROOT_USER: aegis
+      MINIO_ROOT_PASSWORD: trillion
+    command: server /data --console-address ":9001"
 
   # 캐시
   redis:
