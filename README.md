@@ -160,7 +160,7 @@ flowchart LR
 | 서비스 | 이미지 | 포트 | 설명 |
 |--------|--------|------|------|
 | caddy | caddy:latest | 443 | 리버스 프록시, HTTPS |
-| mediamtx | aegis-mediamtx:latest | 9997, 8554, 8889, 8189/udp, 8890/udp, 8888 | 미디어 서버 |
+| mediamtx | bluenviron/mediamtx:latest-ffmpeg | 9997, 8554, 8889, 8189/udp, 8890/udp, 8888 | 미디어 서버 |
 | postgres | postgres:latest | 5432 | 데이터베이스 |
 | minio | minio/minio:latest | 9000, 9001 | 오브젝트 스토리지 |
 | redis | redis:latest | 6379 | 캐시 |
@@ -211,6 +211,12 @@ localhost {
 
 ## MediaMTX (미디어 서버)
 
+### 이미지
+
+공식 이미지 사용: `bluenviron/mediamtx:latest-ffmpeg`
+
+> 이전에는 curl 설치를 위해 커스텀 Dockerfile을 사용했으나, wget을 사용하는 방식으로 변경하여 공식 이미지를 직접 사용합니다.
+
 ### 포트
 
 | 포트 | 프로토콜 | 용도 |
@@ -222,48 +228,41 @@ localhost {
 | 8890 | UDP | SRT (외부 스트림 수신) |
 | 8888 | TCP | HLS (클립 추출) |
 
-### mediamtx.yml 설정
+### 환경 변수 설정
+
+mediamtx.yml 파일 대신 환경 변수로 설정합니다:
 
 ```yaml
-# 로그
-logLevel: info
-
-# API
-api: yes
-apiAddress: :9997
-
-# 프로토콜
-srt: yes          # 외부 스트림 수신
-webrtc: yes       # Frontend 실시간 스트리밍
-rtsp: yes         # Python 프레임 캡처
-hls: yes          # Spring 클립 추출
-rtmp: no          # 미사용
-
-# HLS 녹화 설정
-hlsVariant: fmp4
-hlsSegmentDuration: 3s
-hlsSegmentCount: 10
-hlsSegmentMaxSize: 10M
-hlsDirectory: /recordings
-
-# 인증 (Spring Backend 위임)
-authMethod: http
-authHTTPAddress: http://host.docker.internal:8080/internal/mediamtx/auth
-
-# 스트림 이벤트 훅
-paths:
-  all:
-    runOnReady: curl -s -X POST http://host.docker.internal:8080/internal/mediamtx/sync
-    runOnNotReady: curl -s -X POST http://host.docker.internal:8080/internal/mediamtx/sync
-```
-
-### Dockerfile.mediamtx
-
-커스텀 빌드 (curl 포함):
-
-```dockerfile
-FROM bluenviron/mediamtx:latest
-RUN apk add --no-cache curl
+environment:
+  # 로그 및 기본 설정
+  MTX_LOGLEVEL: "info"
+  MTX_API: "yes"
+  
+  # 프로토콜 설정
+  MTX_RTMP: "no"
+  MTX_SRT: "yes"
+  MTX_WEBRTC: "yes"
+  MTX_RTSP: "yes"
+  MTX_HLS: "yes"
+  
+  # WebRTC 설정
+  MTX_WEBRTCADDITIONALHOSTS: "127.0.0.1"
+  
+  # HLS 설정
+  MTX_HLSVARIANT: "fmp4"
+  MTX_HLSSEGMENTDURATION: "3s"
+  MTX_HLSSEGMENTCOUNT: "10"
+  MTX_HLSSEGMENTMAXSIZE: "10M"
+  MTX_HLSDIRECTORY: "/recordings"
+  
+  # 인증 설정 (Spring Backend 위임)
+  MTX_AUTHMETHOD: "http"
+  MTX_AUTHHTTPADDRESS: "http://host.docker.internal:8080/internal/mediamtx/auth"
+  
+  # 이벤트 훅 (wget 사용)
+  MTX_PATHS_ALL_RUNONREADY: "wget -q -O - --header='Content-Type: application/json' --post-data='{}' http://host.docker.internal:8080/internal/mediamtx/sync"
+  MTX_PATHS_ALL_RUNONREADYRESTART: "no"
+  MTX_PATHS_ALL_RUNONNOTREADY: "wget -q -O - --header='Content-Type: application/json' --post-data='{}' http://host.docker.internal:8080/internal/mediamtx/sync"
 ```
 
 ### 인증 설정
@@ -301,8 +300,7 @@ srt://host:8890?streamid=publish:카메라명:사용자:비밀번호
 
 | 호스트 | 컨테이너 | 설명 |
 |--------|----------|------|
-| ./mediamtx.yml | /mediamtx.yml | 설정 파일 |
-| ./recordings | /recordings | HLS 녹화 파일 |
+| ./mediamtx_data | /recordings | HLS 녹화 파일 |
 
 ## PostgreSQL
 
@@ -377,15 +375,13 @@ srt://host:8890?streamid=publish:카메라명:사용자:비밀번호
 aegis-infra/
 ├── Caddyfile
 ├── docker-compose.yml
-├── Dockerfile.mediamtx
-├── mediamtx.yml
+├── README.md
 ├── caddy_config/       # Caddy 설정 캐시
 ├── caddy_data/         # Caddy 인증서
+├── mediamtx_data/      # MediaMTX HLS 녹화
 ├── minio_data/         # MinIO 데이터
 │   └── files/
-│       └── files/
 ├── postgres_data/      # PostgreSQL 데이터
-├── recordings/         # MediaMTX HLS 녹화
 └── redis_data/         # Redis 데이터
     └── dump.rdb
 ```
@@ -394,7 +390,7 @@ aegis-infra/
 
 ```bash
 # 모든 데이터 삭제 (주의!)
-rm -rf postgres_data/* minio_data/* redis_data/*
+rm -rf postgres_data/* minio_data/* redis_data/* mediamtx_data/*
 ```
 
 ## 실행 방법
@@ -409,7 +405,7 @@ docker-compose up -d
 docker-compose logs -f
 
 # 특정 서비스 로그
-docker-compose logs -f caddy
+docker-compose logs -f mediamtx
 ```
 
 ### 중지
@@ -420,14 +416,6 @@ docker-compose down
 
 # 볼륨까지 삭제
 docker-compose down -v
-```
-
-### 재빌드
-
-```bash
-# MediaMTX 이미지 재빌드
-docker-compose build mediamtx
-docker-compose up -d mediamtx
 ```
 
 ## 외부 서비스 연결
