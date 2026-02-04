@@ -6,6 +6,14 @@ localhost {
         reverse_proxy host.docker.internal:8080
     }
 
+    # MinIO
+    handle /clips/* {
+        uri strip_prefix /clips
+        reverse_proxy aegis-minio:9000 {
+            header_up Host {upstream_hostport}
+        }
+    }
+
     # MediaMTX
     handle /stream/* {
         uri strip_prefix /stream
