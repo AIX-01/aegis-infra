@@ -475,3 +475,31 @@ docker exec -it aegis-redis redis-cli
 # 키 확인
 keys *
 ```
+
+---
+
+## 🐛 Known Issues
+
+> 최종 감사일: 2026-02-04
+
+### 보안 이슈
+
+| 파일 | 문제 | 심각도 | 권장 조치 |
+|------|------|--------|----------|
+| `docker-compose.yml` | PostgreSQL, MinIO, Redis 비밀번호가 기본값(`trillion`) 하드코딩 | 🔴 높음 | `.env` 파일로 분리하고 gitignore 처리 |
+| `docker-compose.yml` | Redis에 비밀번호 미설정 (`redis:latest` 기본) | 🟡 중간 | `--requirepass` 옵션 추가 |
+| `Caddyfile` | `tls internal` 자체 서명 인증서 사용 | 🟢 낮음 | 운영환경에서 Let's Encrypt 등 실제 인증서 사용 |
+
+### 구성 이슈
+
+| 파일 | 문제 | 설명 |
+|------|------|------|
+| `docker-compose.yml:47` | `command: [ "/dev/null" ]` | MediaMTX 설정 파일 경로가 `/dev/null`로 되어 있음. 환경변수로만 설정 중이나 복잡한 설정 필요 시 별도 `mediamtx.yml` 마운트 필요 |
+| `docker-compose.yml` | `postgres_data` 볼륨 경로 | `./postgres_data:/var/lib/postgresql`로 마운트되어 있으나 일반적으로 `/var/lib/postgresql/data` 권장 |
+
+### 미구현/미사용
+
+| 항목 | 설명 |
+|------|------|
+| HLS 스트리밍 (8888) | MediaMTX에서 HLS 포트가 노출되어 있으나 현재 미사용 (WebRTC만 사용) |
+| RTMP | `MTX_RTMP: "no"`로 비활성화됨 |
