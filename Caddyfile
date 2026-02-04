@@ -6,9 +6,8 @@ localhost {
         reverse_proxy host.docker.internal:8080
     }
 
-    # MinIO
-    handle /clips/* {
-        uri strip_prefix /clips
+    # 클립 스토리지 (MinIO presigned URL 프록시)
+    handle /clip/* {
         reverse_proxy aegis-minio:9000 {
             header_up Host {upstream_hostport}
         }
