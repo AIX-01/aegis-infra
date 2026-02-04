@@ -112,10 +112,13 @@ flowchart LR
 1. Agent: Redis camera:analysis:update 채널 구독
 2. Agent: Redis에서 분석 카메라 목록 조회 (GET analysis:cameras)
 3. Agent: RTSP로 MediaMTX에 직접 연결 (rtsp://localhost:8554/{cam}, 인증 없음)
-4. Agent: 1fps 캡처, 640x360 리사이즈, 8프레임 버퍼링
+4. Agent: PyAV로 30초 클립 버퍼 유지 + 1fps 프레임 캡처
 5. Agent: LangGraph 분석 파이프라인 실행
-6. Agent → Spring Boot: POST /internal/agent/events → Event 생성 (클립 자동 추출)
-7. Agent → Spring Boot: PATCH /internal/agent/events/{id}/analysis → 분석 결과 추가
+6. Agent → Spring Boot: POST /internal/agent/events → Event 생성
+7. Agent → MinIO: temp/clips/{event_id}.mp4 저장
+8. Agent → Spring Boot: POST /internal/agent/events/{id}/clip → 클립 확정
+9. Spring Boot: temp/clips → clips로 이동, Event.clipUrl 저장
+10. Agent → Spring Boot: PATCH /internal/agent/events/{id}/analysis → 분석 결과 추가
 ```
 
 ### 인증 흐름
@@ -226,7 +229,7 @@ localhost {
 | 8889 | TCP | WebRTC WHEP (Frontend 스트리밍) |
 | 8189 | UDP | WebRTC ICE |
 | 8890 | UDP | SRT (외부 스트림 수신) |
-| 8888 | TCP | HLS (클립 추출) |
+| 8888 | TCP | HLS (미사용) |
 
 ### 환경 변수 설정
 
@@ -241,20 +244,13 @@ environment:
   # 프로토콜 설정
   MTX_RTMP: "no"
   MTX_SRT: "yes"
-  MTX_WEBRTC: "yes"
   MTX_RTSP: "yes"
-  MTX_HLS: "yes"
+  MTX_WEBRTC: "yes"
   
   # WebRTC 설정
   MTX_WEBRTCADDITIONALHOSTS: "127.0.0.1"
   
-  # HLS 설정
-  MTX_HLSVARIANT: "fmp4"
-  MTX_HLSSEGMENTDURATION: "3s"
-  MTX_HLSSEGMENTCOUNT: "10"
-  MTX_HLSSEGMENTMAXSIZE: "10M"
-  MTX_HLSDIRECTORY: "/recordings"
-  
+
   # 인증 설정 (Spring Backend 위임)
   MTX_AUTHMETHOD: "http"
   MTX_AUTHHTTPADDRESS: "http://host.docker.internal:8080/internal/mediamtx/auth"
@@ -275,7 +271,6 @@ environment:
 |----------|--------|-----------|------|
 | SRT | publish | ID/PW | `streamid=publish:path:user:password` 형식 |
 | RTSP | read | 없음 | Python Agent 프레임 캡처용 (내부) |
-| HLS | read | 없음 | Spring 클립 추출용 (내부) |
 | WebRTC | read | JWT | Basic Auth password 필드에 JWT 전달 |
 
 **SRT 송출 URL 형식:**
@@ -286,21 +281,6 @@ srt://host:8890?streamid=publish:카메라명:사용자:비밀번호
 
 예시: `srt://host:8890?streamid=publish:cam1:aegis:trillion`
 
-**HLS 클립 설정:**
-
-| 설정 | 값 | 설명 |
-|------|-----|------|
-| hlsSegmentCount | 10 | 유지 세그먼트 수 |
-| hlsSegmentDuration | 3s | 세그먼트 길이 |
-| hlsSegmentMaxSize | 10M | 세그먼트 최대 크기 |
-
-→ 3초 × 10개 = 최근 30초 보관 (Spring에서 이벤트 발생 시 클립 추출)
-
-### 볼륨
-
-| 호스트 | 컨테이너 | 설명 |
-|--------|----------|------|
-| ./mediamtx_data | /recordings | HLS 녹화 파일 |
 
 ## PostgreSQL
 
@@ -346,7 +326,18 @@ srt://host:8890?streamid=publish:카메라명:사용자:비밀번호
 
 ### 버킷
 
-- **files**: 이벤트 클립 저장 (기본 버킷)
+- **aegis**: 기본 버킷
+
+### 클립 저장 구조
+
+```
+aegis/
+├── clips/                  # 확정된 이벤트 클립
+│   └── {event_id}.mp4
+└── temp/
+    └── clips/              # Python Agent 임시 저장 (매 시간 정리)
+        └── {event_id}.mp4
+```
 
 ## Redis
 
@@ -376,11 +367,8 @@ aegis-infra/
 ├── Caddyfile
 ├── docker-compose.yml
 ├── README.md
-├── caddy_config/       # Caddy 설정 캐시
-├── caddy_data/         # Caddy 인증서
-├── mediamtx_data/      # MediaMTX HLS 녹화
 ├── minio_data/         # MinIO 데이터
-│   └── files/
+│   └── aegis/          # 기본 버킷
 ├── postgres_data/      # PostgreSQL 데이터
 └── redis_data/         # Redis 데이터
     └── dump.rdb
