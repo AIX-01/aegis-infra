@@ -9,7 +9,7 @@ localhost {
     # 클립 스토리지 (MinIO presigned URL 프록시)
     handle /clip/* {
         reverse_proxy aegis-minio:9000 {
-            header_up Host {upstream_hostport}
+            header_up Host localhost:9000
         }
     }
 
