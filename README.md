@@ -77,7 +77,7 @@ flowchart LR
 | SRT | 8890/udp | 원격 MTX에서 스트림 수신 |
 | WebRTC WHEP | 8889 | 시그널링 |
 | WebRTC ICE | 8189/udp | 미디어 |
-| HLS | 8888 | Spring 클립 추출용 (내부) |
+| HLS | 8888 | HLS 스트리밍 (미사용) |
 | RTSP | 8554 | Python Agent 프레임 캡처용 (내부) |
 | API | 9997 | 카메라 목록 조회 |
 
