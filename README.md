@@ -112,12 +112,13 @@ flowchart LR
 2. Agent: Redis에서 분석 카메라 목록 조회 (GET analysis:cameras)
 3. Agent: RTSP로 MediaMTX에 직접 연결 (rtsp://localhost:8554/{cam}, 인증 없음)
 4. Agent: PyAV로 30초 클립 버퍼 유지 + 1fps 프레임 캡처
-5. Agent: LangGraph 분석 파이프라인 실행
-6. Agent → Spring Boot: POST /internal/agent/events → Event 생성
-7. Agent → MinIO: temp/clips/{event_id}.mp4 저장
-8. Agent → Spring Boot: POST /internal/agent/events/{id}/clip → 클립 확정
-9. Spring Boot: temp/clips → clips로 이동, Event.clipUrl 저장
-10. Agent → Spring Boot: PATCH /internal/agent/events/{id}/analysis → 분석 결과 추가
+5. Agent: VLM 1차 분석 수행
+6. [이상 감지 시] Agent → Spring Boot: POST /internal/agent/events → Event 생성 (event_id 획득)
+7. Agent → Spring Boot: GET /internal/agent/events/{id}/clip/upload-url → presigned URL 획득
+8. Agent → MinIO: presigned URL로 clips/{event_id}.mp4 직접 업로드
+9. Agent → Spring Boot: POST /internal/agent/events/{id}/clip/confirm → 클립 확정 (clipUrl 저장)
+10. Agent: LangGraph 정밀 분석 파이프라인 실행
+11. Agent → Spring Boot: PATCH /internal/agent/events/{id}/analysis → 분석 결과 추가
 ```
 
 ### 인증 흐름
@@ -180,12 +181,15 @@ sequenceDiagram
     Agent->>Backend: POST /internal/agent/events
     Backend->>DB: INSERT Event
     Backend->>Browser: SSE "event" + 알림
-    Agent->>Backend: GET upload-url
-    Backend-->>Agent: presigned URL
-    Agent->>S3: PUT 클립 업로드
-    Agent->>Backend: POST clip/confirm
+    Agent->>Backend: GET /internal/agent/events/{id}/clip/upload-url
+    Backend-->>Agent: presigned URL (clips/{id}.mp4)
+    Agent->>S3: PUT 클립 업로드 (presigned URL)
+    Agent->>Backend: POST /internal/agent/events/{id}/clip/confirm
+    Backend->>S3: clipExists 확인
     Backend->>DB: UPDATE clipUrl
-    Agent->>Backend: PATCH analysis
+    Backend->>Browser: SSE "event"
+    Agent->>Agent: LangGraph 정밀 분석
+    Agent->>Backend: PATCH /internal/agent/events/{id}/analysis
     Backend->>DB: UPDATE 분석결과
     Backend->>Browser: SSE "event" + 알림
 
@@ -211,12 +215,14 @@ sequenceDiagram
 
 ```
 aegis/
-├── clips/                      # 확정된 이벤트 클립
+├── clips/                      # 이벤트 클립 (Agent가 presigned URL로 직접 업로드)
 │   └── {event_id}.mp4
 └── temp/
-    └── clips/                  # 임시 업로드 (매 시간 정리 예정)
+    └── clips/                  # 미사용 (고아 경로, 매 시간 정리 스케줄러 존재)
         └── {event_id}.mp4
 ```
+
+**참고**: Agent는 `clips/` 경로에 직접 업로드합니다. `temp/clips/`는 현재 사용되지 않으며, 관련 S3Service 메서드(`tempClipExists`, `moveClipFromTemp`)도 호출되지 않습니다.
 
 ---
 
