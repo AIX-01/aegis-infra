@@ -77,7 +77,6 @@ flowchart LR
 | SRT | 8890/udp | 원격 MTX에서 스트림 수신 |
 | WebRTC WHEP | 8889 | 시그널링 |
 | WebRTC ICE | 8189/udp | 미디어 |
-| HLS | 8888 | HLS 스트리밍 (미사용) |
 | RTSP | 8554 | Python Agent 프레임 캡처용 (내부) |
 | API | 9997 | 카메라 목록 조회 |
 
@@ -254,7 +253,7 @@ aegis/
 | 서비스 | 이미지 | 포트 | 설명 |
 |--------|--------|------|------|
 | caddy | caddy:latest | 443 | 리버스 프록시, HTTPS |
-| mediamtx | bluenviron/mediamtx:latest-ffmpeg | 9997, 8554, 8889, 8189/udp, 8890/udp, 8888 | 미디어 서버 |
+| mediamtx | bluenviron/mediamtx:latest-ffmpeg | 9997, 8554, 8889, 8189/udp, 8890/udp | 미디어 서버 |
 | postgres | postgres:latest | 5432 | 데이터베이스 |
 | minio | minio/minio:latest | 9000, 9001 | 오브젝트 스토리지 |
 | redis | redis:latest | 6379 | 캐시 |
@@ -320,7 +319,6 @@ localhost {
 | 8889 | TCP | WebRTC WHEP (Frontend 스트리밍) |
 | 8189 | UDP | WebRTC ICE |
 | 8890 | UDP | SRT (외부 스트림 수신) |
-| 8888 | TCP | HLS (미사용) |
 
 ### 환경 변수 설정
 
@@ -593,7 +591,7 @@ keys *
 
 | 항목 | 설명 |
 |------|------|
-| HLS 스트리밍 (8888) | MediaMTX에서 포트 노출되어 있으나 현재 미사용 (WebRTC만 사용) |
+| HLS 스트리밍 | MediaMTX는 HLS 지원하나 docker-compose.yml에서 포트 미노출 (WebRTC만 사용) |
 | RTMP | `MTX_RTMP: "no"`로 비활성화됨 |
 | caddy_data, caddy_config 볼륨 | Caddyfile에 명시되어 있으나 docker-compose.yml에 누락 |
 
