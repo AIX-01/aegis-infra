@@ -130,6 +130,97 @@ flowchart LR
 4. 갱신 실패 → /auth로 리다이렉트
 ```
 
+---
+
+## 전체 시스템 통합
+
+### 컴포넌트별 역할
+
+| 컴포넌트 | 역할 | 통신 대상 |
+|----------|------|-----------|
+| **Caddy** | HTTPS 종단, 라우팅 | Frontend, Backend, MediaMTX |
+| **Frontend** | 사용자 인터페이스, WebRTC 재생 | Backend(API), MediaMTX(WebRTC) |
+| **Backend** | REST API, 인증, 데이터 관리 | PostgreSQL, Redis, MinIO, MediaMTX |
+| **AI Agent** | 영상 분석, 이벤트 생성 | Backend(webhook), MediaMTX(RTSP), Redis(Pub/Sub) |
+| **MediaMTX** | 스트림 수신/변환/송출 | Backend(인증), Agent(RTSP) |
+| **PostgreSQL** | 영구 데이터 저장 | Backend |
+| **Redis** | 토큰, 캐시, Pub/Sub | Backend, Agent |
+| **MinIO** | 클립 영상 저장 | Backend, Agent |
+
+### 데이터 흐름 상세
+
+```mermaid
+sequenceDiagram
+    participant Remote as 원격 카메라
+    participant MTX as MediaMTX
+    participant Agent as AI Agent
+    participant Backend as Spring Boot
+    participant DB as PostgreSQL
+    participant Redis as Redis
+    participant S3 as MinIO
+    participant Frontend as Next.js
+    participant Browser as 브라우저
+
+    Note over Remote,Browser: 1. 스트림 등록
+    Remote->>MTX: SRT 스트림 송출
+    MTX->>Backend: POST /internal/mediamtx/sync
+    Backend->>MTX: GET /v3/paths/list
+    Backend->>DB: INSERT/UPDATE 카메라
+    Backend->>Redis: SET analysis:cameras
+    Backend->>Redis: PUBLISH camera:analysis:update
+    Backend->>Browser: SSE "camera" 이벤트
+
+    Note over Remote,Browser: 2. AI 분석
+    Redis-->>Agent: 채널 구독 알림
+    Agent->>Redis: GET analysis:cameras
+    Agent->>MTX: RTSP 연결
+    MTX-->>Agent: 영상 스트림
+    Agent->>Agent: VLM 분석
+    
+    Note over Agent,Browser: 3. 이상 감지 시
+    Agent->>Backend: POST /internal/agent/events
+    Backend->>DB: INSERT Event
+    Backend->>Browser: SSE "event" + 알림
+    Agent->>Backend: GET upload-url
+    Backend-->>Agent: presigned URL
+    Agent->>S3: PUT 클립 업로드
+    Agent->>Backend: POST clip/confirm
+    Backend->>DB: UPDATE clipUrl
+    Agent->>Backend: PATCH analysis
+    Backend->>DB: UPDATE 분석결과
+    Backend->>Browser: SSE "event" + 알림
+
+    Note over Remote,Browser: 4. 사용자 모니터링
+    Browser->>Backend: GET /api/cameras
+    Backend-->>Browser: 카메라 목록 + streamUrl
+    Browser->>MTX: POST /stream/{cam}/whep
+    MTX->>Backend: POST /internal/mediamtx/auth
+    Backend-->>MTX: 200 OK (인증 성공)
+    MTX-->>Browser: WebRTC 연결
+```
+
+### Redis 키/채널 설계
+
+| 키/채널 | 타입 | 용도 | 생산자 | 소비자 |
+|---------|------|------|--------|--------|
+| `refresh_token:{token}` | String | 토큰→사용자 매핑 | Backend | Backend |
+| `mediamtx:sync:lock` | String | 동기화 중복 방지 | Backend | Backend |
+| `analysis:cameras` | String(JSON) | 분석 대상 카메라 | Backend | Agent |
+| `camera:analysis:update` | Pub/Sub | 카메라 변경 알림 | Backend | Agent |
+
+### MinIO 버킷 구조
+
+```
+aegis/
+├── clips/                      # 확정된 이벤트 클립
+│   └── {event_id}.mp4
+└── temp/
+    └── clips/                  # 임시 업로드 (매 시간 정리 예정)
+        └── {event_id}.mp4
+```
+
+---
+
 ## 아키텍처 (ASCII)
 
 ```
