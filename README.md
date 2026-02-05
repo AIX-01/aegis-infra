@@ -480,26 +480,35 @@ keys *
 
 ## 🐛 Known Issues
 
-> 최종 감사일: 2026-02-04
+> 최종 감사일: 2026-02-05
 
 ### 보안 이슈
 
 | 파일 | 문제 | 심각도 | 권장 조치 |
 |------|------|--------|----------|
-| `docker-compose.yml` | PostgreSQL, MinIO, Redis 비밀번호가 기본값(`trillion`) 하드코딩 | 🔴 높음 | `.env` 파일로 분리하고 gitignore 처리 |
-| `docker-compose.yml` | Redis에 비밀번호 미설정 (`redis:latest` 기본) | 🟡 중간 | `--requirepass` 옵션 추가 |
-| `Caddyfile` | `tls internal` 자체 서명 인증서 사용 | 🟢 낮음 | 운영환경에서 Let's Encrypt 등 실제 인증서 사용 |
+| `docker-compose.yml` | PostgreSQL 비밀번호 하드코딩 (`trillion`) | 🔴 높음 | `.env` 파일로 분리, gitignore 처리 |
+| `docker-compose.yml` | MinIO 비밀번호 하드코딩 (`trillion`) | 🔴 높음 | `.env` 파일로 분리, gitignore 처리 |
+| `docker-compose.yml` | Redis 비밀번호 미설정 | 🟡 중간 | `--requirepass` 옵션 추가 |
+| `Caddyfile` | `tls internal` 자체 서명 인증서 | 🟢 낮음 | 운영환경에서 Let's Encrypt 사용 |
 
 ### 구성 이슈
 
-| 파일 | 문제 | 설명 |
+| 파일 | 문제 | 상세 |
 |------|------|------|
-| `docker-compose.yml:47` | `command: [ "/dev/null" ]` | MediaMTX 설정 파일 경로가 `/dev/null`로 되어 있음. 환경변수로만 설정 중이나 복잡한 설정 필요 시 별도 `mediamtx.yml` 마운트 필요 |
-| `docker-compose.yml` | `postgres_data` 볼륨 경로 | `./postgres_data:/var/lib/postgresql`로 마운트되어 있으나 일반적으로 `/var/lib/postgresql/data` 권장 |
+| `docker-compose.yml:47` | MediaMTX 설정 파일 경로 | `command: [ "/dev/null" ]`로 설정 파일 무시. 복잡한 설정 필요 시 별도 `mediamtx.yml` 마운트 필요 |
+| `docker-compose.yml:58` | PostgreSQL 볼륨 경로 | `./postgres_data:/var/lib/postgresql`로 마운트. 일반적으로 `/var/lib/postgresql/data` 권장 |
 
 ### 미구현/미사용
 
 | 항목 | 설명 |
 |------|------|
-| HLS 스트리밍 (8888) | MediaMTX에서 HLS 포트가 노출되어 있으나 현재 미사용 (WebRTC만 사용) |
+| HLS 스트리밍 (8888) | MediaMTX에서 포트 노출되어 있으나 현재 미사용 (WebRTC만 사용) |
 | RTMP | `MTX_RTMP: "no"`로 비활성화됨 |
+| caddy_data, caddy_config 볼륨 | Caddyfile에 명시되어 있으나 docker-compose.yml에 누락 |
+
+### 기타
+
+| 항목 | 설명 |
+|------|------|
+| 네트워크 격리 | 모든 서비스가 동일 네트워크(`aegis`)에 있음. 운영환경에서 DB/Cache 네트워크 분리 권장 |
+| 리소스 제한 | CPU/메모리 제한 미설정. 운영환경에서 `deploy.resources` 설정 필요 |
