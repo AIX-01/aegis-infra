@@ -10,8 +10,6 @@ services:
       - "443:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - ./caddy_data:/data
-      - ./caddy_config:/config
     networks:
       - aegis
 
@@ -25,12 +23,9 @@ services:
     ports:
       - "9997:9997"       # API
       - "8890:8890/udp"   # SRT
+      - "8554:8554"       # RTSP
       - "8889:8889"       # WebRTC WHEP
       - "8189:8189/udp"   # WebRTC ICE
-      - "8554:8554"       # RTSP
-      - "8888:8888"       # HLS
-    volumes:
-      - ./mediamtx_data:/recordings
     networks:
       - aegis
     environment:
@@ -40,17 +35,10 @@ services:
       # --- 프로토콜 설정 ---
       MTX_RTMP: "no"
       MTX_SRT: "yes"
-      MTX_WEBRTC: "yes"
       MTX_RTSP: "yes"
-      MTX_HLS: "yes"
+      MTX_WEBRTC: "yes"
       # --- WebRTC 설정 ---
       MTX_WEBRTCADDITIONALHOSTS: "127.0.0.1"
-      # --- HLS 설정 ---
-      MTX_HLSVARIANT: "fmp4"
-      MTX_HLSSEGMENTDURATION: "3s"
-      MTX_HLSSEGMENTCOUNT: "10"
-      MTX_HLSSEGMENTMAXSIZE: "10M"
-      MTX_HLSDIRECTORY: "/recordings"
       # --- 인증 설정 ---
       MTX_AUTHMETHOD: "http"
       MTX_AUTHHTTPADDRESS: "http://host.docker.internal:8080/internal/mediamtx/auth"
